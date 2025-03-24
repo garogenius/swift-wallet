@@ -2,41 +2,57 @@ import React from 'react';
 
 interface TokenIconProps {
   symbol: string;
+  logoURI?: string;
   size?: number;
   className?: string;
 }
 
-const TokenIcon: React.FC<TokenIconProps> = ({ symbol, size = 24, className = '' }) => {
-  const getTokenImage = (symbol: string) => {
+const TokenIcon: React.FC<TokenIconProps> = ({ 
+  symbol, 
+  logoURI, 
+  size = 24, 
+  className = '' 
+}) => {
+  const getTokenImage = (symbol: string): string => {
     const normalizedSymbol = symbol.toUpperCase();
     const jupiterCDN = 'https://cdn.jup.ag/tokens';
     
-    // Special cases for devnet tokens
-    const tokenMap: { [key: string]: string } = {
+    const tokenMap: Record<string, string> = {
       'SOL': `${jupiterCDN}/solana.svg`,
       'USDC': `${jupiterCDN}/usdc.svg`,
       'USDT': `${jupiterCDN}/usdt.svg`,
-      'UNKWN': 'https://cdn.jsdelivr.net/gh/trustwallet/assets/blockchains/solana/info/logo.png'
+      'BONK': `${jupiterCDN}/bonk.svg`,
+      'JUP': `${jupiterCDN}/jup.svg`,
+      'WSOL': `${jupiterCDN}/solana.svg`,
+      'UNKNOWN': 'https://cdn.jsdelivr.net/gh/trustwallet/assets/blockchains/solana/info/logo.png'
     };
 
     return tokenMap[normalizedSymbol] || `${jupiterCDN}/${normalizedSymbol}.svg`;
   };
 
-  const handleError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    e.currentTarget.src = 'https://cdn.jsdelivr.net/gh/trustwallet/assets/blockchains/solana/info/logo.png';
-    e.currentTarget.onerror = null; // Prevent infinite loop
+  const handleError = (e: React.SyntheticEvent<HTMLImageElement, Event>): void => {
+    const img = e.currentTarget;
+    if (!img.src.includes('cdn.jup.ag')) {
+      img.src = getTokenImage(symbol);
+    } else {
+      img.src = 'https://cdn.jsdelivr.net/gh/trustwallet/assets/blockchains/solana/info/logo.png';
+      img.onerror = null;
+    }
   };
+
+  const imageSrc = logoURI || getTokenImage(symbol);
 
   return (
     <img
-      src={getTokenImage(symbol)}
+      src={imageSrc}
       alt={`${symbol} icon`}
       className={`rounded-full ${className}`}
       style={{ 
         width: size,
         height: size,
         minWidth: size,
-        minHeight: size 
+        minHeight: size,
+        objectFit: 'contain'
       }}
       onError={handleError}
       loading="lazy"

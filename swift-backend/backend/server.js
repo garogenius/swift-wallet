@@ -62,15 +62,15 @@ app.post('/api/wallet/import', (req, res) => {
 });
 
 // ✅ Get Wallet Balance
-app.get('/api/wallet/balance/:publicKey', async (req, res) => {
-    try {
-        const balance = await connection.getBalance(new PublicKey(req.params.publicKey));
-        res.status(200).json({ balance });
-    } catch (err) {
-        console.error('Error fetching balance:', err);
-        res.status(500).json({ error: 'Failed to fetch balance' });
-    }
-});
+// app.get('/api/wallet/balance/:publicKey', async (req, res) => {
+//     try {
+//         const balance = await connection.getBalance(new PublicKey(req.params.publicKey));
+//         res.status(200).json({ balance });
+//     } catch (err) {
+//         console.error('Error fetching balance:', err);
+//         res.status(500).json({ error: 'Failed to fetch balance' });
+//     }
+// });
 
 // ✅ Fetch Token Prices
 app.get('/api/wallet/prices', async (req, res) => {
@@ -131,6 +131,8 @@ const fetchWalletData = async (walletPublicKey) => {
                 mint: tokenInfo.mint,
                 owner: tokenInfo.owner,
                 amount: tokenInfo.tokenAmount.uiAmount,
+                decimals: tokenInfo.tokenAmount.decimals,
+                amountRaw: tokenInfo.tokenAmount.amount,
             };
         });
 
@@ -145,17 +147,26 @@ app.get('/api/wallet/tokens/:walletPublicKey', async (req, res) => {
     try {
         const { walletPublicKey } = req.params;
 
+        // Validate wallet address
+        if (!walletPublicKey || walletPublicKey.length < 32) {
+            return res.status(400).json({ error: 'Invalid wallet address' });
+        }
+
         // Fetch tokens associated with the wallet
         const tokens = await fetchWalletData(walletPublicKey);
 
         if (tokens.length > 0) {
-            res.status(200).json({ tokens });
+            res.status(200).json({ success: true, tokens });
         } else {
-            res.status(404).json({ error: 'No tokens found for this wallet' });
+            res.status(200).json({ success: true, tokens: [] });
         }
     } catch (error) {
         console.error('Error fetching tokens:', error);
-        res.status(500).json({ error: 'Failed to fetch tokens' });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch tokens',
+            details: error.message 
+        });
     }
 });
 
@@ -169,6 +180,83 @@ app.get('/receive/:publicKey', async (req, res) => {
         res.status(500).json({ error: 'Failed to generate QR Code' });
     }
 });
+
+
+
+
+
+
+app.get('/api/token-balances/:walletAddress', async (req, res) => {
+    try {
+      const { walletAddress } = req.params;
+      const connection = new Connection(RPC_URL);
+      const publicKey = new PublicKey(walletAddress);
+  
+      // 1. Get SOL balance
+      const solBalance = await connection.getBalance(publicKey);
+      const solAmount = solBalance / 10**9;
+  
+      // 2. Get SPL token accounts
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+        programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+      });
+  
+      // 3. Get token metadata from Jupiter API
+      const { data: jupiterTokens } = await axios.get('https://token.jup.ag/strict');
+  
+      // 4. Process tokens
+      const tokens = [];
+  
+      // Add SOL first
+      tokens.push({
+        mint: 'So11111111111111111111111111111111111111112',
+        symbol: 'SOL',
+        name: 'Solana',
+        amount: solAmount,
+        decimals: 9,
+        logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png'
+      });
+  
+      // Add SPL tokens with balance
+      tokenAccounts.value.forEach(account => {
+        const info = account.account.data.parsed.info;
+        const amount = Number(info.tokenAmount.uiAmount);
+        
+        if (amount > 0) {
+          const tokenData = jupiterTokens.find(t => t.address === info.mint) || {};
+          
+          tokens.push({
+            mint: info.mint,
+            symbol: tokenData.symbol || 'UNKNOWN',
+            name: tokenData.name || 'Unknown Token',
+            amount: amount,
+            decimals: info.tokenAmount.decimals,
+            logoURI: tokenData.logoURI
+          });
+        }
+      });
+  
+      if (tokens.length === 0) {
+        return res.status(404).json({ error: 'No tokens found in this wallet' });
+      }
+  
+      // 5. Get prices (optional)
+      const symbols = tokens.map(t => t.symbol).join(',');
+      const { data: prices } = await axios.get(`https://price.jup.ag/v4/price?ids=${symbols}`);
+      
+      // Add values to tokens
+      const tokensWithValues = tokens.map(token => ({
+        ...token,
+        value: (prices.data[token.symbol]?.price || 0) * token.amount
+      }));
+  
+      res.json({ tokens: tokensWithValues });
+  
+    } catch (error) {
+      console.error('Error:', error);
+      res.status(500).json({ error: 'Failed to fetch token balances' });
+    }
+  });
 
 // ✅ Start Server
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));

@@ -20,6 +20,8 @@ import SendPage from './pages/SendPage';
 import RecoveryPhrasePage from './pages/RecoveryPhrasePage.tsx';
 import SelectTokenPage from './pages/SelectTokenPage.tsx';
 import RecipientAddressPage from './pages/RecipientAddressPage.tsx';
+import { WalletProvider } from './context/WalletContext.tsx';
+import Auth from './pages/Auth.tsx';
 
 const router = createBrowserRouter([
     { path: "/", element: <Welcome /> },
@@ -37,14 +39,16 @@ const router = createBrowserRouter([
     { path: "/scan", element: <QrScanner /> },
     { path: "/recovery-phrase", element: <RecoveryPhrasePage /> },
     { path: "/send/:token", element: <RecipientAddressPage /> },
-
+    { path: "/auth", element: <Auth /> },
     { path: "/notfound", element: <NotFoundPage /> },
 ]);
 
 function App() {
   return (
     <ThemeProvider>
+      <WalletProvider>
       <RouterProvider router={router} />
+      </WalletProvider>
     </ThemeProvider>
   );
 }

@@ -1,140 +1,90 @@
 import React, { useState, useEffect } from 'react';
-import TokenIcon from "./TokenIcon";
-import axios from 'axios';
+import { getTokenBalances } from '../pages/tokenService';
+import TokenIcon from './TokenIcon';
 
 interface Token {
-    mint: string;
-    symbol: string;
-    name: string;
-    amount: number;
-    value: number;
-    decimals: number;
+  mint: string;
+  symbol: string;
+  name: string;
+  amount: number;
+  decimals: number;
+  logoURI?: string;
 }
 
-interface TokenListProps {
-    tokens: Token[];
-}
+const TokenList: React.FC<{ walletPublicKey: string }> = ({ walletPublicKey }) => {
+  const [tokens, setTokens] = useState<Token[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-const TokenList: React.FC<TokenListProps> = ({ tokens }) => {
-    const [tokenPrices, setTokenPrices] = useState<{ [symbol: string]: number }>({});
-    const [loading, setLoading] = useState(false); // Added loading state
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        const fetchTokenPrices = async () => {
-            if (!process.env.COINMARKETCAP_API_KEY) {
-                console.error("CoinMarketCap API Key is missing. Please set it in .env file.");
-                setError("CoinMarketCap API Key is missing.");
-                return; // Stop fetching if the key is missing
-            }
-
-            const symbols = tokens.map((token) => token.symbol).join(",");
-            setLoading(true);
-            setError(null);
-            try {
-                const response = await axios.get(
-                    `https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=${symbols}`,
-                    {
-                        headers: {
-                            "X-CMC_PRO_API_KEY": process.env.COINMARKETCAP_API_KEY,
-                        },
-                    }
-                );
-
-                if (response.status !== 200) {
-                    throw new Error(`Failed to fetch prices. Status code: ${response.status}`);
-                }
-
-                const data = response.data;
-                const newPrices: { [symbol: string]: number } = {};
-
-                if (data.data) {
-                    Object.keys(data.data).forEach((symbol) => {
-                        const symbolData = data.data[symbol];
-                         // Check if quote.USD is defined
-                        if (symbolData && symbolData.quote && symbolData.quote.USD) {
-                            newPrices[symbol] = symbolData.quote.USD.price;
-                        } else {
-                             console.warn(`Price data for ${symbol} is missing or incomplete.`);
-                            newPrices[symbol] = 0; // Or some default value
-                        }
-                    });
-                }
-                setTokenPrices(newPrices);
-            } catch (error: any) {
-                setError(error.message); // Set the error message
-                console.error("Error fetching token prices:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (tokens && tokens.length > 0) {
-          fetchTokenPrices();
-        }
+  useEffect(() => {
+    const fetchBalances = async () => {
+      try {
+        setLoading(true);
+        setError(null);
         
-    }, [tokens]);
+        const { tokens: fetchedTokens } = await getTokenBalances(walletPublicKey);
+        
+        if (fetchedTokens.length === 0 || 
+            (fetchedTokens.length === 1 && fetchedTokens[0].amount === 0)) {
+          setError('No tokens found in this wallet');
+        } else {
+          setTokens(fetchedTokens);
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+        setError('Failed to load token balances. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    if (loading) {
-        return (
-            <div className="mt-6 flex justify-center items-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500"></div>
-            </div>
-        );
+    if (walletPublicKey) {
+      fetchBalances();
     }
+  }, [walletPublicKey]);
 
-    if (error) {
-        return (
-            <div className="mt-6 p-4 bg-red-100 text-red-700 rounded-md border border-red-400">
-                Error: {error}
-            </div>
-        );
-    }
-
+  if (loading) {
     return (
-        <div className="mt-6">
-            <div className="flex justify-between items-center text-gray-600 text-sm mb-4">
-                <p>Asset</p>
-                <p className="flex items-center gap-1">
-                    Last 24h <span className="text-xs">▼</span>
-                </p>
-            </div>
-
-            {tokens.map((token, index) => {
-              const price = tokenPrices[token.symbol] || 0;
-              const value = token.amount * price;
-
-              return (
-                <div
-                  key={`${token.mint}-${index}`}
-                  className="bg-white rounded-xl p-4 mb-3 flex justify-between items-center shadow-md hover:shadow-lg transition-shadow"
-                >
-                  <div className="flex items-center gap-3">
-                    <TokenIcon symbol={token.symbol} />
-                    <div>
-                      <p className="font-semibold text-lg">
-                        {token.amount.toFixed(4)}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{token.symbol}</span>
-                        <span className="text-gray-500 text-sm">
-                          {token.name}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="font-semibold text-lg">${value.toFixed(2)}</p>
-                    <p className="text-sm font-medium text-gray-500">
-                      {price ? `$${price.toFixed(4)}` : "Price Unavailable"}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-        </div>
+      <div className="flex justify-center items-center h-40">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
     );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 rounded-md bg-red-50 text-red-700 border border-red-200">
+        {error}
+        {error.includes('Failed') && (
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-2 text-sm underline"
+          >
+            Try Again
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {tokens.map((token, index) => (
+        <div key={index} className="flex items-center justify-between p-4 bg-white rounded-lg shadow">
+          <div className="flex items-center space-x-3">
+            <TokenIcon symbol={token.symbol} logoURI={token.logoURI} size={32} />
+            <div>
+              <p className="font-medium">{token.symbol}</p>
+              <p className="text-sm text-gray-500">{token.name}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="font-medium">{token.amount.toFixed(token.decimals)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 export default TokenList;
